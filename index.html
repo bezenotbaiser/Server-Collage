@@ -204,15 +204,35 @@
     reader.readAsDataURL(file);
   });
 
+  function compressImage(file, maxWidth, quality) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let w = img.width, h = img.height;
+          if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   async function addPhoto() {
     const username = document.getElementById('username-input').value.trim();
     if (!username) { showToast('✦ Speak thy name first...'); return; }
     if (!selectedFile) { showToast('✦ Choose a likeness to offer...'); return; }
     const btn = document.getElementById('add-btn');
     btn.textContent = '☽ Inscribing...'; btn.disabled = true;
-    const reader = new FileReader();
-    reader.onload = async e => {
-      const src = e.target.result;
+    try {
+      // Compress to max 800px wide, 70% quality to stay under Supabase row limit
+      const src = await compressImage(selectedFile, 800, 0.7);
       const date = new Date().toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
       const { error } = await sb.from('photos').insert([{ username, src, date }]);
       if (error) {
@@ -227,9 +247,11 @@
         img.src = ''; img.style.display = 'none';
         selectedFile = null;
       }
-      btn.textContent = '✦ Offer to the Gallery'; btn.disabled = false;
-    };
-    reader.readAsDataURL(selectedFile);
+    } catch(err) {
+      showToast('✦ The spirits refused... try again.');
+      console.error(err);
+    }
+    btn.textContent = '✦ Offer to the Gallery'; btn.disabled = false;
   }
 
   async function removePhoto(id) {
